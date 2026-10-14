@@ -1,0 +1,5 @@
+# Protect the demo SQL dumps from being downloaded over HTTP.
+# (install.php stays reachable - only data files are blocked.)
+<FilesMatch "\.(sql|dump|log|err)$">
+    Require all denied
+</FilesMatch>
