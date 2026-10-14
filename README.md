@@ -62,10 +62,50 @@ Plus: `login.php` (session login), `logout.php`, `index.php` (router),
 
 ---
 
+## ☁️ Deploy to Railway (public URL)
+
+> ⚠️ `something.railway.internal` is a **private network address**. It resolves only
+> between services inside the same Railway project, so it will *never* open in a
+> browser — that is expected, not a bug. You need a **public domain** instead.
+
+1. **Generate a public domain**
+   Service → **Settings** → **Networking** → **Public Networking** → **Generate Domain**.
+   Railway gives you something like `xxxx-yyyy.up.railway.app` — that is the URL to open.
+
+2. **Add a MySQL database**
+   Project canvas → **+ New** → **MySQL**. A second service appears in the project.
+
+3. **Point the PHP service at that database**
+   Open the **MySQL** service → **Connect** tab → add these variables to the PHP
+   service's **Variables** tab using Railway references:
+
+   | Variable | Reference value |
+   |----------|-----------------|
+   | `DATABASE_URL` | `${{MySQL.MYSQL_URL}}` |
+
+   `MYSQLHOST` / `MYSQLPORT` / `MYSQLUSER` / `MYSQLPASSWORD` / `MYSQLDATABASE`
+   work too — `config/db.php` reads whichever you provide (URL first, then the
+   individual variables, then `MS_DB_*`, then the local XAMPP defaults).
+
+4. **Seed the demo data**
+   After the deploy is *Active*, open
+   `https://<your-public-domain>/database/install.php` and click **Install**.
+   The very first install needs no login; once data exists, rebuilding it
+   requires logging in first (so strangers can't wipe the demo).
+
+5. Log in at `https://<your-public-domain>/` → `admin` / `admin123`.
+
+No other configuration is required: the repo contains `composer.json`, so
+Railway's builder detects PHP and installs the `pdo_mysql` + `mbstring`
+extensions, and `index.php` at the repo root becomes the document root.
+
+---
+
 ## 🗄️ Database
 
 Database name: **`mesho_demo`** (default XAMPP credentials: user `root`, empty password —
-change them in `config/db.php` and `database/install.php`).
+change them in `config/db.php`, which is the single place where credentials are
+resolved; `database/install.php` reads the same file).
 
 | Table | Purpose |
 |-------|---------|

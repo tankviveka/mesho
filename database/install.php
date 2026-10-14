@@ -26,16 +26,24 @@
 
 declare(strict_types=1);
 
-/* ------------------------------------------------------------------ */
-/* Configuration                                                       */
-/* ------------------------------------------------------------------ */
+/*
+ * Credentials come from config/db.php, which reads the environment first
+ * (MYSQL_URL / MYSQLHOST / MYSQLPORT / MYSQLUSER / MYSQLPASSWORD /
+ * MYSQLDATABASE, or explicit MS_DB_* overrides) and only then falls back
+ * to the local XAMPP defaults. So the same file works on XAMPP and on a
+ * hosted setup such as Railway.
+ */
 
-const MS_DB_HOST = '127.0.0.1';
-const MS_DB_PORT = '3306';
-const MS_DB_NAME = 'mesho_demo';
-const MS_DB_USER = 'root';
-const MS_DB_PASS = '';
-const MS_CHARSET = 'utf8mb4';
+require_once __DIR__ . '/../config/db.php';
+
+$msDbCfg = ms_db_config();
+define('MS_DB_HOST', $msDbCfg['host']);
+define('MS_DB_PORT', $msDbCfg['port']);
+define('MS_DB_NAME', $msDbCfg['name']);
+define('MS_DB_USER', $msDbCfg['user']);
+define('MS_DB_PASS', $msDbCfg['pass']);
+define('MS_CHARSET', $msDbCfg['charset']);
+unset($msDbCfg);
 
 /* ------------------------------------------------------------------ */
 /* Schema                                                              */
@@ -695,6 +703,28 @@ $msIsDirect = isset($_SERVER['SCRIPT_FILENAME'])
 if (!$msIsDirect) {
     return; // safe to include elsewhere as a library of functions
 }
+
+/*
+ * Public-host guard.
+ * On a public URL the installer must not stay wide open: once the demo data
+ * exists, only a logged-in admin may rebuild it. A completely fresh database
+ * stays open so the very first install works without a session.
+ */
+$status = ms_status();
+$msFresh = ($status['error'] !== null)
+    || !$status['database_exists']
+    || ($status['tables']['orders'] ?? false) === false;
+
+if (!$msFresh) {
+    require_once __DIR__ . '/../includes/auth.php';
+    if (!is_logged_in()) {
+        $msScript = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/database/install.php'));
+        $msBase = rtrim(str_replace('\\', '/', dirname(dirname($msScript))), '/');
+        header('Location: ' . $msBase . '/login.php');
+        exit;
+    }
+}
+unset($msFresh);
 
 $flash = null;
 

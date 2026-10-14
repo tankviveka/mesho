@@ -1,0 +1,16 @@
+{
+    "name": "vtank755-hash/mesho",
+    "description": "Meesho Seller Dashboard - DEMO. PHP + MySQL sample-data dashboard, not connected to any real Meesho account.",
+    "type": "project",
+    "license": "proprietary",
+    "keywords": ["demo", "dashboard", "php", "mysql"],
+    "require": {
+        "php": ">=8.2",
+        "ext-pdo_mysql": "*",
+        "ext-mbstring": "*"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    }
+}
