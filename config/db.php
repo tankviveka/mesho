@@ -142,6 +142,54 @@ define('ITEMS_PER_PAGE_OPTIONS', [10, 25, 50, 100]);
 /* ------------------------------------------------------------------ */
 
 /**
+ * Web path of the application root ( '' at the domain root, '/mesho' when
+ * the app lives in a sub folder ). Used to build correct links from any
+ * script, including the ones inside /database.
+ */
+function ms_app_base_path(): string
+{
+    $docRoot = rtrim(str_replace('\\', '/', (string) ($_SERVER['DOCUMENT_ROOT'] ?? '')), '/');
+    $appDir  = rtrim(str_replace('\\', '/', dirname(__DIR__)), '/');
+
+    if ($docRoot !== '' && $appDir !== '' && str_starts_with($appDir, $docRoot)) {
+        return rtrim(substr($appDir, strlen($docRoot)), '/');
+    }
+
+    return '';
+}
+
+/**
+ * Create the demo database if it does not exist yet.
+ *
+ * On a hosted MySQL (Railway, cPanel, ...) the account usually has the right
+ * to create its own database, and the configured name may not exist yet.
+ * This makes the app self-healing instead of failing with error 1049.
+ */
+function ms_ensure_database(): bool
+{
+    $safeName = preg_replace('/[^A-Za-z0-9_]/', '_', DB_NAME) ?: 'mesho_demo';
+
+    try {
+        $pdo = new PDO(
+            sprintf('mysql:host=%s;port=%s;charset=utf8mb4', DB_HOST, DB_PORT),
+            DB_USER,
+            DB_PASS,
+            [
+                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            ]
+        );
+        $pdo->exec(
+            'CREATE DATABASE IF NOT EXISTS `' . $safeName . '` '
+            . 'CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+        );
+        return true;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+/**
  * Open (and reuse) a PDO connection to the demo database.
  *
  * All queries in this project use prepared statements - never string
@@ -174,26 +222,92 @@ function db(): PDO
     try {
         $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
     } catch (PDOException $e) {
-        http_response_code(500);
-        // Friendly setup guidance instead of leaking driver details.
-        echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
-            . '<title>Database connection failed</title>'
-            . '<link rel="stylesheet" href="assets/vendor/bootstrap.min.css"></head>'
-            . '<body class="bg-light"><div class="container py-5"><div class="alert alert-danger">'
-            . '<h4 class="alert-heading">Could not connect to the demo database</h4>'
-            . '<p class="mb-2">Please make sure:</p><ol class="mb-2">'
-            . '<li>MySQL is running in XAMPP (XAMPP Control Panel &rarr; Start <strong>MySQL</strong>).</li>'
-            . '<li>The database <code>' . htmlspecialchars(DB_NAME, ENT_QUOTES) . '</code> exists.</li>'
-            . '<li>You imported <code>database/schema.sql</code> and <code>database/seed.sql</code> '
-            . '(or ran <code>database/install.php</code>).</li></ol>'
-            . '<p class="mb-0 small text-muted">Technical detail: '
-            . htmlspecialchars($e->getMessage(), ENT_QUOTES) . '</p></div>'
-            . '<a class="btn btn-primary" href="login.php">Back to login</a></div></body></html>';
-        exit;
+        // Error 1049 = "Unknown database". The server answered, so the
+        // credentials are right - the database itself is simply missing.
+        $isMissingDb = ((int) ($e->errorInfo[1] ?? 0)) === 1049
+            || str_contains($e->getMessage(), '1049');
+
+        if ($isMissingDb && ms_ensure_database()) {
+            try {
+                $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
+            } catch (PDOException $retryError) {
+                $e = $retryError;
+                $isMissingDb = false;
+            }
+        }
+
+        if (!$pdo instanceof PDO) {
+            http_response_code(500);
+            ms_render_db_error($e, $isMissingDb ? 'missing-db' : 'connection');
+            exit;
+        }
     }
 
     return $pdo;
 }
+
+/**
+ * Friendly, environment-aware error page (never leaks the password).
+ *
+ * @param string $reason 'missing-db' | 'missing-tables' | 'connection'
+ */
+function ms_render_db_error(Throwable $e, string $reason = 'connection'): void
+{
+    $base  = ms_app_base_path();
+    $host  = htmlspecialchars(DB_HOST . ':' . DB_PORT, ENT_QUOTES);
+    $db    = htmlspecialchars(DB_NAME, ENT_QUOTES);
+    $hosted = ms_env('RAILWAY_ENVIRONMENT', 'RAILWAY_SERVICE_ID', 'MYSQLHOST', 'MYSQL_URL') !== '';
+    $installLink = $base . '/database/install.php';
+
+    if ($reason === 'missing-tables') {
+        $title = 'Demo data not installed yet';
+        $body  = '<p class="lead">The database <code>' . $db . '</code> exists but is empty - '
+            . 'the demo tables and sample orders have not been created yet.</p>'
+            . '<p>One click creates the tables, the demo users and 1,400 sample orders:</p>'
+            . '<a class="btn btn-primary btn-lg" href="' . $installLink . '">'
+            . 'Create &amp; seed the demo database</a>';
+    } elseif ($reason === 'missing-db') {
+        $title = 'Demo database not created yet';
+        $body  = '<p class="lead">The MySQL server answered, but the database '
+            . '<code>' . $db . '</code> does not exist yet.</p>'
+            . '<p>One click creates the database, the tables and 1,400 sample orders:</p>'
+            . '<a class="btn btn-primary btn-lg" href="' . $installLink . '">'
+            . 'Create &amp; seed the demo database</a>';
+    } elseif ($hosted) {
+        $title = 'Could not reach the database';
+        $body  = '<p class="lead">The app cannot connect to MySQL.</p>'
+            . '<p>Check that:</p><ol>'
+            . '<li>The MySQL service is running (not crashed / not sleeping).</li>'
+            . '<li>These variables exist in your app service:<br>'
+            . '<code>MYSQL_URL</code> or <code>MYSQLHOST</code> / <code>MYSQLPORT</code> / '
+            . '<code>MYSQLUSER</code> / <code>MYSQLPASSWORD</code> / <code>MYSQLDATABASE</code></li>'
+            . '<li>They are set for the <em>same environment</em> as the deployed app.</li>'
+            . '</ol>'
+            . '<p>Then redeploy and reload this page.</p>';
+    } else {
+        $title = 'Could not connect to the demo database';
+        $body  = '<p>Please make sure:</p><ol>'
+            . '<li>MySQL is running in XAMPP (XAMPP Control Panel &rarr; Start <strong>MySQL</strong>).</li>'
+            . '<li>The database <code>' . $db . '</code> exists.</li>'
+            . '<li>You imported <code>database/schema.sql</code> and <code>database/seed.sql</code> '
+            . '(or ran <code>database/install.php</code>).</li></ol>'
+            . '<p><a class="btn btn-primary" href="' . $installLink . '">Run the installer</a></p>';
+    }
+
+    echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        . '<title>' . $title . '</title>'
+        . '<link rel="stylesheet" href="' . $base . '/assets/vendor/bootstrap.min.css"></head>'
+        . '<body class="bg-light"><div class="container py-5" style="max-width:760px">'
+        . '<div class="alert alert-danger"><h4 class="alert-heading">' . $title . '</h4>'
+        . $body
+        . '<p class="mb-0 small text-muted">Server: ' . $host . ' &middot; Database: ' . $db
+        . '<br>Technical detail: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES) . '</p>'
+        . '</div>'
+        . '<a class="btn btn-outline-secondary" href="' . $base . '/login.php">Back to login</a>'
+        . '</div></body></html>';
+}
+
 
 /**
  * Run a prepared statement and return it.
@@ -202,9 +316,22 @@ function db(): PDO
  */
 function db_query(string $sql, array $params = []): PDOStatement
 {
-    $stmt = db()->prepare($sql);
-    $stmt->execute($params);
-    return $stmt;
+    try {
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt;
+    } catch (PDOException $e) {
+        // Error 1146 = "Table doesn't exist" - the database is there but the
+        // demo tables were never installed. Show the installer instead of a
+        // blank 500 error page.
+        $code = (int) ($e->errorInfo[1] ?? 0);
+        if ($code === 1146 || str_contains($e->getMessage(), '1146')) {
+            http_response_code(500);
+            ms_render_db_error($e, 'missing-tables');
+            exit;
+        }
+        throw $e;
+    }
 }
 
 /**
