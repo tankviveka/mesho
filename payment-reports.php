@@ -1,4 +1,4 @@
-f<?php
+fgit remote set-url origin https://github.com/tankviveka/mesho.git<?php
 /**
  * Payment Reports - payment status, modes and monthly settlements.
  *
