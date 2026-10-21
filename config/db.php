@@ -63,6 +63,24 @@ function ms_db_config(): array
         'charset' => 'utf8mb4',
     ];
 
+    // 0. Optional local override file (free shared hosting such as
+    //    InfinityFree, where environment variables are not available).
+    //    Create config/db.local.php with:
+    //        <?php return ['host' => 'sqlXXX.infinityfree.com',
+    //                       'port' => '3306', 'name' => 'if0_12345',
+    //                       'user' => 'if0_12345', 'pass' => 'secret'];
+    $localFile = __DIR__ . '/db.local.php';
+    if (is_file($localFile)) {
+        $local = require $localFile;
+        if (is_array($local)) {
+            foreach (['host', 'port', 'name', 'user', 'pass'] as $key) {
+                if (isset($local[$key]) && (string) $local[$key] !== '') {
+                    $cfg[$key] = (string) $local[$key];
+                }
+            }
+        }
+    }
+
     // 2. Full connection string (MySQL URL style).
     $url = ms_env('MYSQL_URL', 'DATABASE_URL');
     if ($url !== '' && preg_match('#^mysql(2)?://#i', $url) === 1) {

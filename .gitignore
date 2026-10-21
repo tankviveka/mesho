@@ -1,0 +1,5 @@
+# Local machine / XAMPP
+database/mesho-mysql/
+config/db.local.php
+*.log
+.DS_Store

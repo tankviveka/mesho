@@ -101,6 +101,42 @@ extensions, and `index.php` at the repo root becomes the document root.
 
 ---
 
+## 🌐 Free hosting with no time limit (InfinityFree, 000WebHost, …)
+
+Railway's free tier is a **5-day trial**, so for a permanent free URL use any
+free PHP + MySQL host (InfinityFree is ad-free and needs no card).
+
+1. **Create an account** and then a **MySQL database** in the control panel.
+   Write down: database name, username, password and host
+   (e.g. `sql312.infinityfree.com`).
+2. **Upload the project.** A ready-made package is in your Downloads:
+   `mesho-seller-dashboard-demo.zip` — extract it into `htdocs/`
+   (or connect the GitHub repo with the host's Git integration).
+3. **Point the app at the database** by creating one extra file,
+   `config/db.local.php`, inside the uploaded folder:
+
+   ```php
+   <?php
+   return [
+       'host' => 'sql312.infinityfree.com',
+       'port' => '3306',
+       'name' => 'if0_12345678',
+       'user' => 'if0_12345678',
+       'pass' => 'your-database-password',
+   ];
+   ```
+
+   (`config/db.local.php` is git-ignored, so credentials never reach GitHub.)
+4. **Seed the demo data** — open `http://your-domain/database/install.php`
+   and click **Install** (or import `database/schema.sql` then
+   `database/seed.sql` via phpMyAdmin).
+5. Log in at `http://your-domain/` → `admin` / `admin123`.
+
+The same `config/db.local.php` trick works on any host with PHP + MySQL but
+no environment variables.
+
+---
+
 ## 🗄️ Database
 
 Database name: **`mesho_demo`** (default XAMPP credentials: user `root`, empty password —
